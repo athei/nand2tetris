@@ -39,5 +39,25 @@ CHIP CPU {
         pc[15];          // address of next instruction
 
     PARTS:
-    // Put your code here:
+    ALU(x=outD, y=outY, zx=instruction[11], nx=instruction[10], zy=instruction[9], ny=instruction[8],
+        f=instruction[7], no=instruction[6], out=outAlu, out=outM, zr=isZero, ng=isLess);
+    ARegister(in=inA, load=loadA, out=outA, out[0..14]=addressM);
+    DRegister(in=outAlu, load=loadD, out=outD); // d2 = 1 -> save Result to D
+    PC(in=outA, load=jmp, inc=true, reset=reset, out[0..14]=pc);
+
+    Not(in=instruction[15], out=isAInstruction);
+    Or(a=isAInstruction, b=instruction[5], out=loadA); // d1 = 1 -> save result to A
+    Mux16(a=instruction, b=outAlu, sel=instruction[15], out=inA);
+    Mux16(a=outA, b=inM, sel=instruction[12], out=outY);  // a = 1 -> use M instead of A
+    And(a=instruction[3], b=instruction[15], out=writeM); // write when c-instr and d3
+    And(a=instruction[4], b=instruction[15], out=loadD);
+
+    // determine if we need to jump
+    Or(a=isZero, b=isLess, out=isNotGreater);
+    Not(in=isNotGreater, out=isGreater);
+    And(a=instruction[2], b=isLess, out=jmpLess);
+    And(a=instruction[1], b=isZero, out=jmpZero);
+    And(a=instruction[0], b=isGreater, out=jmpGreater);
+    Or8Way(in[0]=jmpLess, in[1]=jmpZero, in[2]=jmpGreater, in[3..7]=false, out=jmpInstr);
+    And(a=instruction[15], b=jmpInstr, out=jmp);
 }
