@@ -1,13 +1,13 @@
-use regex::{Regex, RegexSet, Captures};
+use regex::{Captures, Regex, RegexSet};
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 use std::str::Lines;
 
 const REGEX_TEXT: [&str; 3] = [
-    r"^@(?P<content>([0-9]+)|[a-zA-Z0-9_\.\$:])+$",                   // A-Instruction
+    r"^@(?P<content>([0-9]+)|[a-zA-Z0-9_\.\$:])+$", // A-Instruction
     r"^((?P<dest>[^=]{1,3})=)?(?P<op>[^@;]{1,3})(;(?P<jmp>.{3}))?$", // C-Instruction
-    r"^\((?P<content>[a-zA-Z_\.\$:][0-9a-zA-Z_\.\$:]*)\)$",         // Label
+    r"^\((?P<content>[a-zA-Z_\.\$:][0-9a-zA-Z_\.\$:]*)\)$", // Label
 ];
 
 thread_local! {
@@ -19,8 +19,8 @@ thread_local! {
 
 #[derive(Debug)]
 pub struct AsmLine {
-    address: u16,
-    command: Command,
+    pub address: u16,
+    pub command: Command,
 }
 
 #[derive(Debug)]
@@ -53,14 +53,9 @@ impl AsmLine {
                 _ => panic!("This should be exaustive"),
             };
 
-            let asm =  AsmLine {
-                address,
-                command
-            };
-
-            return Ok(asm);
+            return Ok(Self { address, command });
         }
-        Err(format!("{}: Cannot recognize {} at address {}", loc, line, address))
+        Err(format!("{}: Cannot recognize {}", loc, line))
     }
 
     fn parse_a(cap: &Captures) -> ACommand {
@@ -74,23 +69,90 @@ impl AsmLine {
     }
 
     fn parse_c(cap: &Captures) -> Result<u16, String> {
-        unimplemented!()
+        let jmp = cap.name("jmp");
+        let dest = cap.name("dest");
+        let op = &cap["op"];
+        let mut result: u16 = 0b1110_0000_0000_0000;
+
+        if dest.is_none() && jmp.is_none() {
+            return Err("Destination or jump must be set".into());
+        }
+
+        if let Some(jmp) = jmp {
+            result |= match jmp.as_str() {
+                "JGT" => 0b001,
+                "JEQ" => 0b010,
+                "JGE" => 0b011,
+                "JLT" => 0b100,
+                "JNE" => 0b101,
+                "JLE" => 0b110,
+                "JMP" => 0b111,
+                x => return Err(format!("Invalid jmp: {}", x)),
+            };
+        }
+
+        if let Some(dest) = dest {
+            result |= match dest.as_str() {
+                "M" => 0b001,
+                "D" => 0b010,
+                "MD" => 0b011,
+                "A" => 0b100,
+                "AM" => 0b101,
+                "AD" => 0b110,
+                "AMD" => 0b111,
+                x => return Err(format!("Invalid dest: {}", x)),
+            } << 3;
+        }
+
+        result |= match op {
+            "0" => 0b0_101_010,
+            "1" => 0b0_111_111,
+            "-1" => 0b0_111_010,
+            "D" => 0b0_001_100,
+            "A" => 0b0_110_000,
+            "M" => 0b1_110_000,
+            "!D" => 0b0_001_101,
+            "!A" => 0b0_110_001,
+            "!M" => 0b1_110_001,
+            "-D" => 0b0_001_111,
+            "-A" => 0b0_110_011,
+            "-M" => 0b1_110_011,
+            "D+1" => 0b0_011_111,
+            "A+1" => 0b0_110_111,
+            "M+1" => 0b1_110_111,
+            "D-1" => 0b0_001_110,
+            "A-1" => 0b0_110_010,
+            "D+A" => 0b0_000_010,
+            "D-A" => 0b0_010_011,
+            "A-D" => 0b0_000_111,
+            "D&A" => 0b0_000_000,
+            "D|A" => 0b0_010_101,
+            "M-1" => 0b1_110_010,
+            "D+M" => 0b1_000_010,
+            "D-M" => 0b1_010_011,
+            "M-D" => 0b1_000_111,
+            "D&M" => 0b1_000_000,
+            "D|M" => 0b1_010_101,
+            x => return Err(format!("Invalid op: {}", x)),
+        } << 6;
+
+        Ok(result)
     }
 
     fn parse_l(cap: &Captures) -> String {
-        unimplemented!()
+        cap["content"].to_string()
     }
 }
 
 impl Parser {
-    pub fn fromFile(path: &Path) -> std::io::Result<Self> {
+    pub fn from_file(path: &Path) -> std::io::Result<Self> {
         let mut text = String::new();
         let mut file = File::open(path)?;
         file.read_to_string(&mut text)?;
-        Self::fromString(&text)
+        Self::from_string(&text)
     }
 
-    pub fn fromString(text: &str) -> std::io::Result<Self> {
+    pub fn from_string(text: &str) -> std::io::Result<Self> {
         // strip away ignored text
         let text = REGEX_STRIP_COMMENT.with(|r| r.replace_all(&text, ""));
         let text = REGEX_STRIP_WHITESPACE.with(|r| r.replace_all(&text, ""));
@@ -159,7 +221,7 @@ mod tests {
         //blubbl
         ";
 
-        let parser = Parser::fromString(asm).unwrap();
+        let parser = Parser::from_string(asm).unwrap();
 
         assert_eq!(parser.text, "@3\n@4\n\n");
     }
@@ -167,16 +229,19 @@ mod tests {
     #[test]
     fn parse() {
         let asm = "
-        @-5
+        @5
         @3 //blub
         @4
         //blubbl
+        (BLUB)
+        (lo)
+        A;JEQ
         ";
 
-        let parser = Parser::fromString(asm).unwrap();
+        let parser = Parser::from_string(asm).unwrap();
 
         for line in parser.iter() {
-            println!("{:?}", line);
+            println!("{:x?}", line);
         }
     }
 }
