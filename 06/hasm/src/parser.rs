@@ -5,7 +5,7 @@ use std::path::Path;
 use std::str::Lines;
 
 const REGEX_TEXT: [&str; 3] = [
-    r"^@(?P<content>([0-9]+)|[a-zA-Z0-9_\.\$:])+$", // A-Instruction
+    r"^@(?P<content>(-?[0-9]+)|[a-zA-Z0-9_\.\$:])+$", // A-Instruction
     r"^((?P<dest>[^=]{1,3})=)?(?P<op>[^@;]{1,3})(;(?P<jmp>.{3}))?$", // C-Instruction
     r"^\((?P<content>[a-zA-Z_\.\$:][0-9a-zA-Z_\.\$:]*)\)$", // Label
 ];
@@ -32,7 +32,7 @@ pub enum Command {
 
 #[derive(Debug)]
 pub enum ACommand {
-    Constant(u16),
+    Constant(i16),
     Symbol(String),
 }
 
@@ -47,7 +47,7 @@ impl AsmLine {
             let cap = REGEXES.with(|r| r[idx].captures_iter(line).nth(0).unwrap());
 
             let command = match idx {
-                0 => Command::A(Self::parse_a(&cap)),
+                0 => Command::A(Self::parse_a(&cap)?),
                 1 => Command::C(Self::parse_c(&cap)?),
                 2 => Command::L(Self::parse_l(&cap)),
                 _ => panic!("This should be exaustive"),
@@ -58,14 +58,16 @@ impl AsmLine {
         Err(format!("{}: Cannot recognize {}", loc, line))
     }
 
-    fn parse_a(cap: &Captures) -> ACommand {
+    fn parse_a(cap: &Captures) -> Result<ACommand, String> {
         let content = &cap["content"];
 
-        if let Ok(num) = u16::from_str_radix(content, 10) {
-            return ACommand::Constant(num);
+        if let Ok(num) = i16::from_str_radix(content, 10) {
+            if num < 0 {
+                return Err("Constants must be positive".into());
+            }
+            return Ok(ACommand::Constant(num))
         }
-
-        ACommand::Symbol(content.into())
+        Ok(ACommand::Symbol(content.into()))
     }
 
     fn parse_c(cap: &Captures) -> Result<u16, String> {
