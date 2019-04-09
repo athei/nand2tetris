@@ -3,10 +3,12 @@
 #![deny(clippy::correctness)]
 
 mod parser;
+mod symbol_table;
 
-use parser::{ ACommand, Parser };
 use parser::Command::{A, C, L};
+use parser::{ACommand, Parser};
 use std::path::Path;
+use symbol_table::SymbolTable;
 
 pub fn assemble_file(path: &Path) -> Result<String, String> {
     let parser = parser::Parser::from_file(path).map_err(|err| err.to_string())?;
@@ -20,12 +22,13 @@ pub fn assemble_string(text: &str) -> Result<String, String> {
 
 fn assemble(parser: &Parser) -> Result<String, String> {
     let mut result = String::new();
+    let mut table = SymbolTable::new(parser)?;
     for line in parser.iter() {
         let asm = match line?.command {
             A(ACommand::Constant(num)) => format!("{:016b}\n", num),
+            A(ACommand::Symbol(sym)) => format!("{:016b}\n", table.get_address(&sym)),
             C(code) => format!("{:016b}\n", code),
             L(_) => "".to_string(),
-            _ => unimplemented!(),
         };
         result.push_str(&asm);
     }

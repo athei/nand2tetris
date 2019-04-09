@@ -2,9 +2,9 @@
 #![warn(clippy::pedantic)]
 #![deny(clippy::correctness)]
 
-use std::path::PathBuf;
 use std::fs::File;
 use std::io::Read;
+use std::path::PathBuf;
 
 thread_local! {
     static TEST_DIR: PathBuf = {
@@ -30,6 +30,9 @@ fn test_file(name: &str) {
     let mut cmp = String::new();
     let _ = File::open(&hack_file).unwrap().read_to_string(&mut cmp);
 
+    println!("is:\n{}", my);
+    println!("should:\n{}", cmp);
+
     assert_eq!(my, cmp);
 }
 
@@ -44,8 +47,23 @@ fn max_l() {
 }
 
 #[test]
+fn max() {
+    test_file("Max");
+}
+
+#[test]
+fn rect() {
+    test_file("Rect");
+}
+
+#[test]
 fn rect_l() {
     test_file("RectL");
+}
+
+#[test]
+fn pong() {
+    test_file("Pong");
 }
 
 #[test]

@@ -5,7 +5,7 @@ use std::path::Path;
 use std::str::Lines;
 
 const REGEX_TEXT: [&str; 3] = [
-    r"^@(?P<content>(-?[0-9]+)|[a-zA-Z0-9_\.\$:])+$", // A-Instruction
+    r"^@(?P<content>((-?[0-9]+)|[a-zA-Z0-9_\.\$:])+)$", // A-Instruction
     r"^((?P<dest>[^=]{1,3})=)?(?P<op>[^@;]{1,3})(;(?P<jmp>.{3}))?$", // C-Instruction
     r"^\((?P<content>[a-zA-Z_\.\$:][0-9a-zA-Z_\.\$:]*)\)$", // Label
 ];
@@ -65,7 +65,7 @@ impl AsmLine {
             if num < 0 {
                 return Err("Constants must be positive".into());
             }
-            return Ok(ACommand::Constant(num))
+            return Ok(ACommand::Constant(num));
         }
         Ok(ACommand::Symbol(content.into()))
     }
